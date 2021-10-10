@@ -6,7 +6,7 @@ import java.util.List;
 
 public class MacroProcessor {
     private final String inputFileName;
-    private final HashMap<String, Macro> macros = new HashMap<>();
+    private final HashMap<String, Macro> macroTable = new HashMap<>();
     private State state = State.NORMAL;
 
     public MacroProcessor(String inputFile) {
@@ -14,21 +14,18 @@ public class MacroProcessor {
     }
 
     public static void main(String[] args) throws IOException {
-        var inputFile = args[0];
-        new MacroProcessor(inputFile).processMacro();
+        new MacroProcessor("program.asm").processMacro();
     }
 
     private void processMacro() throws IOException {
         var lines = new ArrayList<String>();
 
-        var reader = getInputFileReader();
-        String line;
+        var reader = getInputReader();
         var macroBuilder = new MacroBuilder();
         var previousState = state;
+        String line;
 
         while ((line = reader.readLine()) != null) {
-            line = removeSubsequentSpaces(line);
-
             previousState = state;
             state = newStateFromLine(line);
 
@@ -41,14 +38,11 @@ public class MacroProcessor {
                     break;
                 case NORMAL:
                     if (previousState == State.DEFINITION) {
-                        var macro = macroBuilder.build();
-                        macros.put(macro.getName(), macro);
+                        storeMacro(macroBuilder.build());
                     }
                     break;
                 case EXPANSION:
-                    var tokens = parseMacroCall(line);
-                    var macro = macros.get(tokens.get(0));
-                    line = macro.expand(tokens.subList(1, tokens.size()));
+                    line = expandMacro(line);
                     state = State.NORMAL;
                     break;
             }
@@ -69,13 +63,13 @@ public class MacroProcessor {
         return state;
     }
 
-    private BufferedReader getInputFileReader() throws FileNotFoundException {
+    private BufferedReader getInputReader() throws FileNotFoundException {
         return new BufferedReader(new FileReader(inputFileName));
     }
 
-    private void writeOutput(ArrayList<String> macro) throws IOException {
+    private void writeOutput(ArrayList<String> programOut) throws IOException {
         FileWriter fileWriter = new FileWriter(inputFileName);
-        for (String line : macro) {
+        for (String line : programOut) {
             fileWriter.write(line + "\n");
         }
         fileWriter.close();
@@ -90,13 +84,12 @@ public class MacroProcessor {
     }
 
     private boolean hasMacroCall(String line) {
-        if (!line.trim().contains(" ")) {
-            return false;
-        }
+        var macroName = line.split(" ")[0];
+        return macroTable.containsKey(macroName);
+    }
 
-        var names = macros.values().stream().map(Macro::getName).toList();
-        var firstToken = line.split(" ")[0];
-        return names.contains(firstToken);
+    private void storeMacro(Macro macro) {
+        macroTable.put(macro.getName(), macro);
     }
 
     private List<String> parseMacroCall(String line) {
@@ -106,9 +99,12 @@ public class MacroProcessor {
                 .toList();
     }
 
+    private String expandMacro(String lineWithTheCall) {
+        var nameAndArgs = parseMacroCall(lineWithTheCall);
+        var name = nameAndArgs.get(0);
+        var args = nameAndArgs.subList(1, nameAndArgs.size());
 
-    private String removeSubsequentSpaces(String str) {
-        return str.replaceAll("\\s+", " ");
+        return macroTable.get(name).expand(args);
     }
 
     enum State {NORMAL, DEFINITION, EXPANSION}
